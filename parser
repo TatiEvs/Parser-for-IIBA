@@ -1,0 +1,61 @@
+from selenium.webdriver import Chrome
+import pandas as pd
+import time
+
+# open browser
+driver = Chrome(executable_path="C:/Users/user/Anaconda3/chromedriver.exe")
+
+# scrape projects links from every page
+projects_urls = []
+for page_num in range(1, 131): 
+    print('Scraping urls from page {} out of 130'. format(page_num))
+    driver.get('https://www.informationisbeautifulawards.com/showcase?page=' + str(page_num) + '&type=awards')
+    time.sleep(3)
+    project_blocks = driver.find_elements_by_tag_name('h4')
+    projects_urls.extend([project_block.find_element_by_tag_name('a').get_attribute('href') for project_block in project_blocks])
+    
+print('Scraped {} projects urls'.format(len(projects_urls)))
+
+# create empty list for storing projects data 
+projects_data = []
+
+# scrape projects data from projects urls
+idx = 0
+total = len(projects_urls)
+for project_url in projects_urls:
+    print('Working with project {} out of {}. Url: {}'.format(idx, total, project_url))
+    project_data = [idx, project_url]
+    driver.get(project_url)
+    time.sleep(3)
+    title_author = driver.find_element_by_tag_name('h1').text.split('by')
+    title = title_author[0].strip(' \n')
+    try:
+        author = title_author[1].strip(' \n')
+    except IndexError:
+        author = float("nan")
+    try:
+        description = driver.find_element_by_css_selector('div.content').text.replace('\n', ' ')
+    except NoSuchElementException:
+        time.sleep(10)
+        description = driver.find_element_by_css_selector('div.page-content').text.replace('\n', ' ')
+    details = driver.find_elements_by_css_selector('div.page-details > ul > li')
+    for detail in details:
+        key = detail.find_element_by_class_name('key').text
+        if key.strip(' \n') == 'Award':
+            award = detail.find_element_by_class_name('value').text.strip(' \n')
+        if key.strip(' \n') == 'Categories':
+            categories_blocks = detail.find_elements_by_css_selector('div.value > ul > li > a')
+            categories = ';'.join([category_block.text for category_block in categories_blocks])
+            
+    project_data.extend([title, author, description, award, categories])
+    projects_data.append(project_data)
+    idx += 1
+    
+print('Done scraping. Saving data to file.')
+
+# save scraped data to csv-file
+df = pd.DataFrame(projects_data, columns=['id', 'url', 'title', 'author', 'description', 'award', 'categories'])
+df = df.set_index('id')
+df.to_csv('projects.csv', sep='\t', encoding='utf-8')
+
+driver.close()
